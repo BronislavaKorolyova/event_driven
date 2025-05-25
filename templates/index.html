@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-Commerce Store</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .user-section {
+            display: flex;
+            align-items: center;
+        }
+        .container {
+            display: flex;
+            gap: 30px;
+        }
+        .items-container {
+            flex: 2;
+        }
+        .purchases-container {
+            flex: 1;
+            background-color: #f9f9f9;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        .item-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        .item-card {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            transition: transform 0.2s;
+        }
+        .item-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .item-info {
+            margin-bottom: 15px;
+        }
+        .item-price {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #e63946;
+            margin: 10px 0;
+        }
+        .buy-btn {
+            background-color: #2a9d8f;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .buy-btn:hover {
+            background-color: #218a7e;
+        }
+        .purchase-item {
+            border-bottom: 1px solid #ddd;
+            padding: 10px 0;
+        }
+        .purchase-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .loading {
+            color: #666;
+            text-align: center;
+            padding: 20px;
+        }
+        .error {
+            color: #e63946;
+            padding: 10px;
+            background-color: #ffeeee;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            color: #2a9d8f;
+            padding: 10px;
+            background-color: #effffd;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>E-Commerce Store</h1>
+        <div class="user-section">
+            <label for="user-id">User ID:</label>
+            <input type="text" id="user-id" value="user123" style="margin-left: 10px;">
+        </div>
+    </div>
+
+    <div id="notification" style="display: none;"></div>
+
+    <div class="container">
+        <div class="items-container">
+            <h2>Available Items</h2>
+            <div id="items-grid" class="item-grid">
+                <div class="loading">Loading items...</div>
+            </div>
+        </div>
+
+        <div class="purchases-container">
+            <h2>Your Purchases</h2>
+            <button onclick="loadPurchases()" style="margin-bottom: 15px;">Refresh Purchases</button>
+            <div id="purchases-list">
+                <div class="loading">No purchases loaded</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let items = [];
+        let purchases = [];
+        
+        // DOM ready
+        document.addEventListener('DOMContentLoaded', () => {
+            loadItems();
+            loadPurchases();
+        });
+
+        // Load available items
+        async function loadItems() {
+            try {
+                const response = await fetch('/api/items');
+                if (!response.ok) throw new Error('Failed to load items');
+                
+                items = await response.json();
+                renderItems();
+            } catch (error) {
+                showNotification(error.message, 'error');
+                document.getElementById('items-grid').innerHTML = `
+                    <div class="error">Failed to load items: ${error.message}</div>
+                `;
+            }
+        }
+
+        // Render items in the grid
+        function renderItems() {
+            const itemsGrid = document.getElementById('items-grid');
+            
+            if (items.length === 0) {
+                itemsGrid.innerHTML = '<div class="error">No items available</div>';
+                return;
+            }
+
+            itemsGrid.innerHTML = items.map(item => `
+                <div class="item-card">
+                    <div class="item-info">
+                        <h3>${item.name}</h3>
+                        <p>${item.description || 'No description available'}</p>
+                        <div class="item-price">${item.currency} ${item.price.toFixed(2)}</div>
+                    </div>
+                    <button class="buy-btn" onclick="buyItem('${item.item_id}', '${item.name}', ${item.price}, '${item.currency}')">
+                        Buy Now
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        // Buy an item
+        async function buyItem(itemId, itemName, price, currency) {
+            const userId = document.getElementById('user-id').value.trim();
+            
+            if (!userId) {
+                showNotification('Please enter a user ID', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/purchase', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        item_id: itemId,
+                        item_name: itemName,
+                        quantity: 1,
+                        price: price,
+                        currency: currency
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to process purchase');
+                }
+
+                const result = await response.json();
+                showNotification('Purchase successful! It may take a moment to appear in your purchases.', 'success');
+                
+                // Reload purchases after a short delay to allow processing
+                setTimeout(loadPurchases, 1000);
+            } catch (error) {
+                showNotification(error.message, 'error');
+            }
+        }
+
+        // Load user purchases
+        async function loadPurchases() {
+            const userId = document.getElementById('user-id').value.trim();
+            
+            if (!userId) {
+                document.getElementById('purchases-list').innerHTML = `
+                    <div class="error">Please enter a user ID</div>
+                `;
+                return;
+            }
+
+            document.getElementById('purchases-list').innerHTML = `
+                <div class="loading">Loading purchases...</div>
+            `;
+
+            try {
+                const response = await fetch(`/api/purchases?user_id=${encodeURIComponent(userId)}`);
+                if (!response.ok) throw new Error('Failed to load purchases');
+                
+                purchases = await response.json();
+                renderPurchases();
+            } catch (error) {
+                showNotification(error.message, 'error');
+                document.getElementById('purchases-list').innerHTML = `
+                    <div class="error">Failed to load purchases: ${error.message}</div>
+                `;
+            }
+        }
+
+        // Render purchases list
+        function renderPurchases() {
+            const purchasesList = document.getElementById('purchases-list');
+            
+            if (purchases.length === 0) {
+                purchasesList.innerHTML = '<div class="loading">No purchases yet</div>';
+                return;
+            }
+
+            purchasesList.innerHTML = purchases.map(purchase => `
+                <div class="purchase-item">
+                    <div class="purchase-header">
+                        <h4>${purchase.item_name}</h4>
+                        <span>${purchase.currency} ${purchase.price.toFixed(2)}</span>
+                    </div>
+                    <div>
+                        <small>Quantity: ${purchase.quantity}</small>
+                    </div>
+                    <div>
+                        <small>Date: ${new Date(purchase.timestamp).toLocaleString()}</small>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Show notification
+        function showNotification(message, type) {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = type;
+            notification.style.display = 'block';
+            
+            setTimeout(() => {
+                notification.style.display = 'none';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

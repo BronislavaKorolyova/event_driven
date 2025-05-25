@@ -1,0 +1,70 @@
+services:
+  mongo:
+    image: mongo:7.0
+    container_name: mongo
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+    volumes:
+      - mongo_data:/data/db
+
+  zookeeper:
+    image: bitnami/zookeeper:latest
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+
+  kafka:
+    image: bitnami/kafka:3.6
+    container_name: kafka
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_LISTENERS=PLAINTEXT://:9092,PLAINTEXT_HOST://:29092
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    depends_on:
+      - zookeeper
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: fastapi-server
+    environment:
+      MONGO_URI: mongodb://root:example@mongo:27017
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    restart: always   
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mongo
+      - kafka
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    container_name: fastapi-client
+    environment:
+      API_SERVER_URL: http://server:8000
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "3000:3000"
+    restart: always         
+    depends_on:
+      - server
+      - kafka
+
+volumes:
+  mongo_data:
+
